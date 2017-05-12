@@ -1,5 +1,5 @@
 {
-  "name": "network-mock.js",
+  "name": "network-mock",
   "version": "0.0.0",
   "description": "A convenience-wrapper around the MITM module",
   "main": "index.js",
