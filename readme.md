@@ -8,7 +8,7 @@ Used to assert a network request is received, and then to reply to it.
 
 Usage: 
 
-```
+```js
   const networkMock = require('network-mock');
   const myCode = require('./myCode');
 
@@ -27,7 +27,7 @@ Usage:
   const reply = {status: 200, body: {foo: "bar"}};
 
   const mockPromise = networkMock(expectedReq, reply);
-  myCodesPromise = mycode.doNetworkIO();
+  const myCodesPromise = mycode.doNetworkIO();
 
   Promise.all([mockPromise, myCodesPromise])
     .then(res => {
