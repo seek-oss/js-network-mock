@@ -1,6 +1,9 @@
 const R = require('ramda');
 
 const lowerAllKeysOfAnObject = (o) =>{
+  if(!o){
+    return {};
+  }
   const keys = Object.keys(o);
   let newObject = {};
   keys.forEach(k => {
