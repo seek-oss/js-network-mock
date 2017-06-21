@@ -67,3 +67,41 @@ test.serial('Rejection test', (t) => {
 
   return t.throws(networkMockPromise);
 });
+
+
+test.serial('Response type handling: returning strings', (t) => {
+
+  const expectedReq = {
+    method: 'POST',
+    url: '/somepath',
+    headers: {
+      'X-API-Key': 'foobar',
+      Accept: 'application/json'
+    },
+    body: demoData
+  };
+
+  const networkMockPromise = sut(expectedReq, {status: 200, body: "asdf"});
+  return demoRequest().then(res => {
+    t.is(res.body, 'asdf');
+  });
+});
+
+
+test.serial('Response type handling: returning an object', (t) => {
+
+  const expectedReq = {
+    method: 'POST',
+    url: '/somepath',
+    headers: {
+      'X-API-Key': 'foobar',
+      Accept: 'application/json'
+    },
+    body: demoData
+  };
+
+  const networkMockPromise = sut(expectedReq, {status: 200, body: {foo: "bar"}});
+  return demoRequest().then(res => {
+    t.deepEqual(res.body, JSON.stringify({foo: "bar"}));
+  });
+});

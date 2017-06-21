@@ -40,6 +40,13 @@ const mock = (expectedReq, response) =>
             // Cool, got the expected request, now respond with the
             // given payload
           res.statusCode = response.status;
+
+          if(response.headers){
+            Object.keys(response.headers).forEach(function(k) {
+              res.setHeader(k, response.headers[k]);
+            });
+          }
+
           if(response.body && typeof response.body !== "string"){
             res.end(JSON.stringify(response.body));
           }
