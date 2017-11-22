@@ -2,33 +2,67 @@ const Mitm = require('mitm');
 const R = require('ramda');
 const compareHeaders = require('./headers');
 
-const mock = (expectedReq, response) =>
-
+/**
+* @param expectedReqs {object/array} either an array or expected request or a single request
+* @param responses {object/array} either an array of responses or single response object
+* @return promise for the test
+*/
+const mock = (expectedReqs, responses) =>
   new Promise((resolve, reject) => {
+
     const mitm = Mitm();
-    let httpBodyString = '';
 
     mitm.on('request', (req, res) => {
+
+      let httpBodyString = '';
+
+      let expectedReq;
+
+      if (Array.isArray(expectedReqs) && expectedReqs.length > 0) {
+        // if the passed expected requests are in the form of an array,
+        // pop off one for each request
+        expectedReq = expectedReqs.shift();
+      } else if (Array.isArray(expectedReqs) && expectedReqs.length === 0){
+        reject(new Error({ err: 'more requests have occured than there were expected'}));
+        return;
+      } else {
+        // if the passed reques is a simple object, just use it
+        expectedReq = expectedReqs;
+      }
+
+      let response;
+
+      if (Array.isArray(responses) && responses.length > 0) {
+        // if the passed expected requests are in the form of an array,
+        // grap off one for each request
+        response = responses.shift();
+      } else if (Array.isArray(responses) && responses.length === 0){
+        reject(new Error({ err: 'more responses have been returned than there were expected'}));
+      }
+      else {
+        response = responses
+      }
+
       req.on('data', (d) => { httpBodyString += d.toString(); });
       req.on('end', () => {
 
-        // incoming request has completed, now time to check everything:
+          // incoming request has completed, now time to check everything:
+          let httpBody;
 
-        let body;
-
-        try {
-          // Attempt to treat it as JSON if it's possible
-          body = JSON.parse(httpBodyString);
-        }
-        catch(_){
-          // Else blindly handle it as a string
-          body = httpBodyString;
-        }
+          if (httpBodyString) {
+            try {
+              httpBody = JSON.parse(httpBodyString)
+            }
+            catch(e){
+              // ignore error and set the body to be a string
+              httpBody = httpBodyString
+            }
+          }
 
         const completeReq = {
           method: req.method,
           url: req.url,
-          body: body,
+          body: httpBody,
           headers: req.headers
         };
 
@@ -53,8 +87,13 @@ const mock = (expectedReq, response) =>
           else {
             res.end(response.body);
           }
-          resolve();
-          mitm.disable();
+          if(!Array.isArray(expectedReqs) || expectedReqs.length === 0){
+            resolve();
+            mitm.disable();
+          }
+          else {
+            console.log('Expecting ', expectedReqs.length, 'more requests');
+          }
         } else {
             // This is intentionally obviously wrong status-code.
             // Just trying to signal through all available channels
@@ -64,14 +103,16 @@ const mock = (expectedReq, response) =>
           console.error('Did not receive the expected payload:');
           console.error('expected:', expectedReq);
           console.error('actual:', completeReq);
-          reject(new Error({ err: 'Did not receive the expected payload',
+          reject({ err: 'Did not receive the expected payload',
             expected: expectedReq,
             actual: completeReq
-          }));
-          mitm.disable();
+          });
+          if(!Array.isArray(expectedReqs) || expectedReqs.length === 0){
+            mitm.disable();
+          }
         }
       });
     });
   });
 
-module.exports = mock;
+module.exports = mock

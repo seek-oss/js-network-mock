@@ -15,7 +15,7 @@ const demoRequest = () => {
       .send(JSON.stringify(demoData))
       .set('X-API-Key', 'foobar')
       .set('Accept', 'application/json')
-      .end(function(err, res){
+      .end((err, res) => {
         if (err || !res.ok) {
           reject(err);
         } else {
@@ -104,4 +104,79 @@ test.serial('Response type handling: returning an object', (t) => {
   return demoRequest().then(res => {
     t.deepEqual(res.body, JSON.stringify({foo: "bar"}));
   });
+});
+
+test.serial('Handling multiple requests in the case of a retry', (t) => {
+
+  const expectedReqs = [
+    {
+      method: 'POST',
+      url: '/somepath',
+      headers: {
+        'X-API-Key': 'foobar',
+        Accept: 'application/json'
+      },
+      body: demoData
+    },
+    {
+      method: 'POST',
+      url: '/somepath',
+      headers: {
+        'X-API-Key': 'foobar',
+        Accept: 'application/json'
+      },
+      body: demoData
+    }
+  ]
+
+  const networkMockPromise = sut(expectedReqs, [
+    {status: 500, body: "Error!"},
+    {status: 200, body: {foo: "bar"}},
+  ]);
+
+  return demoRequest()
+    .catch(err => {
+      t.is(err.status, 500);
+      return demoRequest();
+    }).then((res) => {
+      t.is(res.status, 200);
+      t.deepEqual(JSON.parse(res.body), {foo: "bar"});
+  });
+});
+
+
+test.serial('Handling multiple requests with an assertion failing', (t) => {
+
+  const expectedReqs = [
+    {
+      method: 'POST',
+      url: '/somepath',
+      headers: {
+        'X-API-Key': 'foobar',
+        Accept: 'application/json'
+      },
+      body: demoData
+    },
+    {
+      method: 'get',
+      url: '/somepath',
+      headers: {
+        'X-API-Key': 'foobar',
+        Accept: 'application/json'
+      },
+      body: demoData
+    }
+  ]
+
+  const networkMockPromise = sut(expectedReqs, {status: 200, body: {foo: "bar"}});
+
+  demoRequest().then(() => demoRequest())
+
+  return networkMockPromise.catch(e => {
+    t.deepEqual(e.actual.body, {email: "franksmith@domain.test"});
+    t.deepEqual(e.err, "Did not receive the expected payload");
+    t.deepEqual(e.expected.method, "get"); // no idea what's with the casing here
+    t.deepEqual(e.actual.method, "POST");
+  })
+
 });
