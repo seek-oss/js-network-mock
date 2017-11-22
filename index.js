@@ -7,8 +7,28 @@ const compareHeaders = require('./headers');
 * @param responses {object/array} either an array of responses or single response object
 * @return promise for the test
 */
-const mock = (expectedReqs, responses) =>
-  new Promise((resolve, reject) => {
+const mock = function() {
+
+  let reqResponseList;
+
+  let expectedReq;
+  let response;
+
+  // Simple case: only a request/response pair
+  if(arguments.length === 2) {
+    expectedReq = arguments[0];
+    response = arguments[1];
+  }
+  // multiple requests to mock, just set an array
+  else if (arguments.length === 1 && Array.isArray(arguments[0])) {
+    reqResponseList = arguments[0];
+  }
+  else {
+    throw new Error("Mock called with unexpected arguments, expects either "
+     +  "(expectedRequest, respone) or an array of {request,response} objects")
+  }
+
+  return new Promise((resolve, reject) => {
 
     const mitm = Mitm();
 
@@ -16,31 +36,15 @@ const mock = (expectedReqs, responses) =>
 
       let httpBodyString = '';
 
-      let expectedReq;
-
-      if (Array.isArray(expectedReqs) && expectedReqs.length > 0) {
-        // if the passed expected requests are in the form of an array,
-        // pop off one for each request
-        expectedReq = expectedReqs.shift();
-      } else if (Array.isArray(expectedReqs) && expectedReqs.length === 0){
-        reject(new Error({ err: 'more requests have occured than there were expected'}));
-        return;
-      } else {
-        // if the passed reques is a simple object, just use it
-        expectedReq = expectedReqs;
-      }
-
-      let response;
-
-      if (Array.isArray(responses) && responses.length > 0) {
-        // if the passed expected requests are in the form of an array,
-        // grap off one for each request
-        response = responses.shift();
-      } else if (Array.isArray(responses) && responses.length === 0){
-        reject(new Error({ err: 'more responses have been returned than there were expected'}));
-      }
-      else {
-        response = responses
+      // if the passed expected requests are in the form of an array,
+      // pop off one for each request
+      if (reqResponseList && reqResponseList.length > 0) {
+        reqResp = reqResponseList.shift();
+        if(!reqResp.request || !reqResp.response) {
+          throw new Error('expected the mocked request/response objects to be in a single object as {request, response}');
+        }
+        expectedReq = reqResp.request;
+        response = reqResp.response;
       }
 
       req.on('data', (d) => { httpBodyString += d.toString(); });
@@ -87,12 +91,13 @@ const mock = (expectedReqs, responses) =>
           else {
             res.end(response.body);
           }
-          if(!Array.isArray(expectedReqs) || expectedReqs.length === 0){
+
+          if(!reqResponseList || reqResponseList.length === 0){
             resolve();
             mitm.disable();
           }
           else {
-            console.log('Expecting ', expectedReqs.length, 'more requests');
+            console.log('Expecting ', reqResponseList.length, ' more requests');
           }
         } else {
             // This is intentionally obviously wrong status-code.
@@ -107,12 +112,12 @@ const mock = (expectedReqs, responses) =>
             expected: expectedReq,
             actual: completeReq
           });
-          if(!Array.isArray(expectedReqs) || expectedReqs.length === 0){
-            mitm.disable();
-          }
+          mitm.disable();
         }
       });
     });
   });
+
+}
 
 module.exports = mock

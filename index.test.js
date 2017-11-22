@@ -16,10 +16,11 @@ const demoRequest = () => {
       .set('X-API-Key', 'foobar')
       .set('Accept', 'application/json')
       .end((err, res) => {
-        if (err || !res.ok) {
-          reject(err);
-        } else {
+        if (res) {
           resolve({status: res.status, body: res.text});
+        } else {
+          console.error('Error with request', err)
+          reject(err)
         }
       });
   });
@@ -108,34 +109,37 @@ test.serial('Response type handling: returning an object', (t) => {
 
 test.serial('Handling multiple requests in the case of a retry', (t) => {
 
-  const expectedReqs = [
+  const expectations = [
     {
-      method: 'POST',
-      url: '/somepath',
-      headers: {
-        'X-API-Key': 'foobar',
-        Accept: 'application/json'
+      request: {
+        method: 'POST',
+        url: '/somepath',
+        headers: {
+          'X-API-Key': 'foobar',
+          Accept: 'application/json'
+        },
+        body: demoData
       },
-      body: demoData
+      response: {status: 500, body: "Error!"},
     },
     {
-      method: 'POST',
-      url: '/somepath',
-      headers: {
-        'X-API-Key': 'foobar',
-        Accept: 'application/json'
+      request: {
+        method: 'POST',
+        url: '/somepath',
+        headers: {
+          'X-API-Key': 'foobar',
+          Accept: 'application/json'
+        },
+        body: demoData
       },
-      body: demoData
+      response: {status: 200, body: {foo: "bar"}},
     }
   ]
 
-  const networkMockPromise = sut(expectedReqs, [
-    {status: 500, body: "Error!"},
-    {status: 200, body: {foo: "bar"}},
-  ]);
+  const networkMockPromise = sut(expectations);
 
   return demoRequest()
-    .catch(err => {
+    .then(err => {
       t.is(err.status, 500);
       return demoRequest();
     }).then((res) => {
@@ -144,38 +148,44 @@ test.serial('Handling multiple requests in the case of a retry', (t) => {
   });
 });
 
-
 test.serial('Handling multiple requests with an assertion failing', (t) => {
 
-  const expectedReqs = [
+  const expectations = [
     {
-      method: 'POST',
-      url: '/somepath',
-      headers: {
-        'X-API-Key': 'foobar',
-        Accept: 'application/json'
+      request: {
+        method: 'POST',
+        url: '/somepath',
+        headers: {
+          'X-API-Key': 'foobar',
+          Accept: 'application/json'
+        },
+        body: demoData
       },
-      body: demoData
+      response: {status: 500, body: "Error!"},
     },
     {
-      method: 'get',
-      url: '/somepath',
-      headers: {
-        'X-API-Key': 'foobar',
-        Accept: 'application/json'
+      request: {
+        method: 'GET',
+        url: '/somepath',
+        headers: {
+          'X-API-Key': 'foobar',
+          Accept: 'application/json'
+        },
+        body: demoData
       },
-      body: demoData
+      response: {status: 200, body: {foo: "bar"}},
     }
   ]
 
-  const networkMockPromise = sut(expectedReqs, {status: 200, body: {foo: "bar"}});
+  const networkMockPromise = sut(expectations);
 
-  demoRequest().then(() => demoRequest())
+  // retry a request
+  demoRequest().then(() => demoRequest()).catch(e => {console.error(e)})
 
   return networkMockPromise.catch(e => {
     t.deepEqual(e.actual.body, {email: "franksmith@domain.test"});
     t.deepEqual(e.err, "Did not receive the expected payload");
-    t.deepEqual(e.expected.method, "get"); // no idea what's with the casing here
+    t.deepEqual(e.expected.method, "GET");
     t.deepEqual(e.actual.method, "POST");
   })
 

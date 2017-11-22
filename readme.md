@@ -51,23 +51,33 @@ initially returns a 500, then succeeds upon retry.
   const networkMock = require('network-mock');
   const myCode = require('./myCode');
 
-  const expectedReq = [{
-    method: 'POST',
-    url: '/somepath',
-    body: demoData
+  const expectations = [
+  {
+    request: {
+      method: 'POST',
+      url: '/somepath',
+      body: demoData
+    },
+    response: {
+      status: 500,
+      body: "error"
+    }
   },
   {
-    method: 'POST',
-    url: '/somepath',
-    body: demoData
+    {
+      request: {
+        method: 'POST',
+        url: '/somepath',
+        body: demoData
+      },
+      response: {
+        status: 200,
+        body: {foo: "bar"}
+      }
+    }
   }];
 
-  const responses = [
-    {status: 500, body: "error"}
-    {status: 200, body: {foo: "bar"}}
-  ]
-
-  const mockPromise = networkMock(expectedReq, responses);
+  const mockPromise = networkMock(expectations);
   const myCodesPromise = mycode.doNetworkIO();
 
   Promise.all([mockPromise, myCodesPromise])
