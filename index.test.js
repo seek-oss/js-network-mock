@@ -15,11 +15,12 @@ const demoRequest = () => {
       .send(JSON.stringify(demoData))
       .set('X-API-Key', 'foobar')
       .set('Accept', 'application/json')
-      .end(function(err, res){
-        if (err || !res.ok) {
-          reject(err);
-        } else {
+      .end((err, res) => {
+        if (res) {
           resolve({status: res.status, body: res.text});
+        } else {
+          console.error('Error with request', err)
+          reject(err)
         }
       });
   });
@@ -104,4 +105,88 @@ test.serial('Response type handling: returning an object', (t) => {
   return demoRequest().then(res => {
     t.deepEqual(res.body, JSON.stringify({foo: "bar"}));
   });
+});
+
+test.serial('Handling multiple requests in the case of a retry', (t) => {
+
+  const expectations = [
+    {
+      request: {
+        method: 'POST',
+        url: '/somepath',
+        headers: {
+          'X-API-Key': 'foobar',
+          Accept: 'application/json'
+        },
+        body: demoData
+      },
+      response: {status: 500, body: "Error!"},
+    },
+    {
+      request: {
+        method: 'POST',
+        url: '/somepath',
+        headers: {
+          'X-API-Key': 'foobar',
+          Accept: 'application/json'
+        },
+        body: demoData
+      },
+      response: {status: 200, body: {foo: "bar"}},
+    }
+  ]
+
+  const networkMockPromise = sut(expectations);
+
+  return demoRequest()
+    .then(err => {
+      t.is(err.status, 500);
+      return demoRequest();
+    }).then((res) => {
+      t.is(res.status, 200);
+      t.deepEqual(JSON.parse(res.body), {foo: "bar"});
+  });
+});
+
+test.serial('Handling multiple requests with an assertion failing', (t) => {
+
+  const expectations = [
+    {
+      request: {
+        method: 'POST',
+        url: '/somepath',
+        headers: {
+          'X-API-Key': 'foobar',
+          Accept: 'application/json'
+        },
+        body: demoData
+      },
+      response: {status: 500, body: "Error!"},
+    },
+    {
+      request: {
+        method: 'GET',
+        url: '/somepath',
+        headers: {
+          'X-API-Key': 'foobar',
+          Accept: 'application/json'
+        },
+        body: demoData
+      },
+      response: {status: 200, body: {foo: "bar"}},
+    }
+  ]
+
+  const networkMockPromise = sut(expectations);
+
+  // retry a request
+  demoRequest().then(() => demoRequest()).catch(e => {console.error(e)})
+
+  return networkMockPromise.catch(e => {
+    t.deepEqual(e.actual.body, {email: "franksmith@domain.test"});
+    t.deepEqual(e.err, "Did not receive the expected payload");
+    t.deepEqual(e.expected.method, "GET");
+    t.deepEqual(e.actual.method, "POST");
+  })
+
 });

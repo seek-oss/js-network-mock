@@ -1,77 +1,139 @@
 const Mitm = require('mitm');
 const R = require('ramda');
-const compareHeaders = require('./headers');
+const requestMatches = require('./request-matches');
 
-const mock = (expectedReq, response) =>
+/**
+* internal helper function to send mock data back
+* @param responseHandler the http Response object used by mitm
+* @param responseToSend the payload to send back
+*/
+const sendResponse = (responseHandler, responseToSend) => {
+  responseHandler.statusCode = responseToSend.status;
 
-  new Promise((resolve, reject) => {
+  if(responseToSend.headers){
+    Object.keys(responseToSend.headers).forEach(function(k) {
+      res.setHeader(k, responseToSend.headers[k]);
+    });
+  }
+
+  if(responseToSend.body && typeof responseToSend.body !== "string"){
+    responseHandler.end(JSON.stringify(responseToSend.body));
+  }
+  else {
+    responseHandler.end(responseToSend.body);
+  }
+}
+
+/**
+* Internal function to handle formatting the incoming request body
+* @param req {object} The request object from mitm
+* @param httpBodyString {string} the accumulated request string
+* @return {object} a request object including body as string or json
+*/
+const parseIncomingRequest = (req, httpBodyString) => {
+  // incoming request has completed, now time to check everything:
+  let httpBody;
+
+  if (httpBodyString) {
+    try {
+      httpBody = JSON.parse(httpBodyString)
+    }
+    catch(e){
+      // ignore error and set the body to be a string
+      httpBody = httpBodyString
+    }
+  }
+
+  return {
+    method: req.method,
+    url: req.url,
+    body: httpBody,
+    headers: req.headers
+  };
+}
+
+/**
+* @param expectedReqs {object/array} either an array or expected request or a single request
+* @param responses {object/array} either an array of responses or single response object
+* @return promise for the test
+*/
+const mock = function() {
+
+  let reqResponseList;
+
+  let expectedReq;
+  let response;
+
+  // Simple case: only a request/response pair
+  if(arguments.length === 2) {
+    expectedReq = arguments[0];
+    response = arguments[1];
+  }
+  // multiple requests to mock, just set an array
+  else if (arguments.length === 1 && Array.isArray(arguments[0])) {
+    reqResponseList = arguments[0];
+  }
+  else {
+    throw new Error("Mock called with unexpected arguments, expects either "
+    +  "(expectedRequest, respone) or an array of {request,response} objects")
+  }
+
+  return new Promise((resolve, reject) => {
+
     const mitm = Mitm();
-    let httpBodyString = '';
 
     mitm.on('request', (req, res) => {
+
+      let httpBodyString = '';
+
+      // if the passed expected requests are in the form of an array,
+      // pop off one for each request
+      if (reqResponseList && reqResponseList.length > 0) {
+        reqResp = reqResponseList.shift();
+        if(!reqResp.request || !reqResp.response) {
+          throw new Error('expected the mocked request/response objects to be in a single object as {request, response}');
+        }
+        expectedReq = reqResp.request;
+        response = reqResp.response;
+      }
+
       req.on('data', (d) => { httpBodyString += d.toString(); });
       req.on('end', () => {
 
-        // incoming request has completed, now time to check everything:
+        const actualReq = parseIncomingRequest(req, httpBodyString)
 
-        let body;
+        if (requestMatches(expectedReq, actualReq)) {
 
-        try {
-          // Attempt to treat it as JSON if it's possible
-          body = JSON.parse(httpBodyString);
-        }
-        catch(_){
-          // Else blindly handle it as a string
-          body = httpBodyString;
-        }
+          // Cool, got the expected request, now respond with the
+          // given payload
+          sendResponse(res, response);
 
-        const completeReq = {
-          method: req.method,
-          url: req.url,
-          body: body,
-          headers: req.headers
-        };
-
-        if (R.equals(expectedReq.body, completeReq.body) &&
-            R.equals(expectedReq.url, req.url) &&
-            R.equals(expectedReq.method, req.method) &&
-            compareHeaders(expectedReq.headers, req.headers)
-            ) {
-            // Cool, got the expected request, now respond with the
-            // given payload
-          res.statusCode = response.status;
-
-          if(response.headers){
-            Object.keys(response.headers).forEach(function(k) {
-              res.setHeader(k, response.headers[k]);
-            });
-          }
-
-          if(response.body && typeof response.body !== "string"){
-            res.end(JSON.stringify(response.body));
+          if(!reqResponseList || reqResponseList.length === 0){
+            resolve();
+            mitm.disable();
           }
           else {
-            res.end(response.body);
+            console.log('Expecting ', reqResponseList.length, ' more requests');
           }
-          resolve();
-          mitm.disable();
         } else {
-            // This is intentionally obviously wrong status-code.
-            // Just trying to signal through all available channels
-            // that the mock did not receive the expected payload, and
-            // therefore cannot continue.
+          // This is intentionally obviously wrong status-code.
+          // Just trying to signal through all available channels
+          // that the mock did not receive the expected payload, and
+          // therefore cannot continue.
           res.status = 600;
           console.error('Did not receive the expected payload:');
           console.error('expected:', expectedReq);
-          console.error('actual:', completeReq);
-          reject(new Error({ err: 'Did not receive the expected payload',
-            expected: expectedReq,
-            actual: completeReq
-          }));
-          mitm.disable();
-        }
-      });
+          console.error('actual:', actualReq);
+          reject({ err: 'Did not receive the expected payload',
+          expected: expectedReq,
+          actual: actualReq 
+        });
+        mitm.disable();
+      }
     });
   });
+});
 
-module.exports = mock;
+}
+
+module.exports = mock
