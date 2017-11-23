@@ -1,6 +1,56 @@
 const Mitm = require('mitm');
 const R = require('ramda');
-const compareHeaders = require('./headers');
+const requestMatches = require('./request-matches');
+
+/**
+* internal helper function to send mock data back
+* @param responseHandler the http Response object used by mitm
+* @param responseToSend the payload to send back
+*/
+const sendResponse = (responseHandler, responseToSend) => {
+  responseHandler.statusCode = responseToSend.status;
+
+  if(responseToSend.headers){
+    Object.keys(responseToSend.headers).forEach(function(k) {
+      res.setHeader(k, responseToSend.headers[k]);
+    });
+  }
+
+  if(responseToSend.body && typeof responseToSend.body !== "string"){
+    responseHandler.end(JSON.stringify(responseToSend.body));
+  }
+  else {
+    responseHandler.end(responseToSend.body);
+  }
+}
+
+/**
+* Internal function to handle formatting the incoming request body
+* @param req {object} The request object from mitm
+* @param httpBodyString {string} the accumulated request string
+* @return {object} a request object including body as string or json
+*/
+const parseIncomingRequest = (req, httpBodyString) => {
+  // incoming request has completed, now time to check everything:
+  let httpBody;
+
+  if (httpBodyString) {
+    try {
+      httpBody = JSON.parse(httpBodyString)
+    }
+    catch(e){
+      // ignore error and set the body to be a string
+      httpBody = httpBodyString
+    }
+  }
+
+  return {
+    method: req.method,
+    url: req.url,
+    body: httpBody,
+    headers: req.headers
+  };
+}
 
 /**
 * @param expectedReqs {object/array} either an array or expected request or a single request
@@ -25,7 +75,7 @@ const mock = function() {
   }
   else {
     throw new Error("Mock called with unexpected arguments, expects either "
-     +  "(expectedRequest, respone) or an array of {request,response} objects")
+    +  "(expectedRequest, respone) or an array of {request,response} objects")
   }
 
   return new Promise((resolve, reject) => {
@@ -50,47 +100,13 @@ const mock = function() {
       req.on('data', (d) => { httpBodyString += d.toString(); });
       req.on('end', () => {
 
-          // incoming request has completed, now time to check everything:
-          let httpBody;
+        const actualReq = parseIncomingRequest(req, httpBodyString)
 
-          if (httpBodyString) {
-            try {
-              httpBody = JSON.parse(httpBodyString)
-            }
-            catch(e){
-              // ignore error and set the body to be a string
-              httpBody = httpBodyString
-            }
-          }
+        if (requestMatches(expectedReq, actualReq)) {
 
-        const completeReq = {
-          method: req.method,
-          url: req.url,
-          body: httpBody,
-          headers: req.headers
-        };
-
-        if (R.equals(expectedReq.body, completeReq.body) &&
-            R.equals(expectedReq.url, req.url) &&
-            R.equals(expectedReq.method, req.method) &&
-            compareHeaders(expectedReq.headers, req.headers)
-            ) {
-            // Cool, got the expected request, now respond with the
-            // given payload
-          res.statusCode = response.status;
-
-          if(response.headers){
-            Object.keys(response.headers).forEach(function(k) {
-              res.setHeader(k, response.headers[k]);
-            });
-          }
-
-          if(response.body && typeof response.body !== "string"){
-            res.end(JSON.stringify(response.body));
-          }
-          else {
-            res.end(response.body);
-          }
+          // Cool, got the expected request, now respond with the
+          // given payload
+          sendResponse(res, response);
 
           if(!reqResponseList || reqResponseList.length === 0){
             resolve();
@@ -100,23 +116,23 @@ const mock = function() {
             console.log('Expecting ', reqResponseList.length, ' more requests');
           }
         } else {
-            // This is intentionally obviously wrong status-code.
-            // Just trying to signal through all available channels
-            // that the mock did not receive the expected payload, and
-            // therefore cannot continue.
+          // This is intentionally obviously wrong status-code.
+          // Just trying to signal through all available channels
+          // that the mock did not receive the expected payload, and
+          // therefore cannot continue.
           res.status = 600;
           console.error('Did not receive the expected payload:');
           console.error('expected:', expectedReq);
-          console.error('actual:', completeReq);
+          console.error('actual:', actualReq);
           reject({ err: 'Did not receive the expected payload',
-            expected: expectedReq,
-            actual: completeReq
-          });
-          mitm.disable();
-        }
-      });
+          expected: expectedReq,
+          actual: actualReq 
+        });
+        mitm.disable();
+      }
     });
   });
+});
 
 }
 
