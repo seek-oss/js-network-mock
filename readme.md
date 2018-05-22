@@ -36,6 +36,7 @@ const myCodesPromise = mycode.doNetworkIO();
 
 Promise.all([mockPromise, myCodesPromise])
     .then(res => {
+
         // assert stuff and test success?
     })
     .catch(e => {
@@ -44,6 +45,7 @@ Promise.all([mockPromise, myCodesPromise])
 ```
 
 **Multiple assertions**:
+
 
 It is also possible to provide multiple requests with an array for either
 the expected requests, or the responses to multiple requests.
