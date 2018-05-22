@@ -106,17 +106,35 @@ test.serial('Response type handling: returning an object', (t) => {
   };
 
   const networkMockPromise = sut(expectedReq, {
-    status: 200, body: { foo: "bar" },
-    headers: {
-      'X-API-Key': 'imagine this is a key sent to the server. It should be returned in the response header',
-      'Accept': 'application/json'
-    }
+    status: 200, body: { foo: "bar" }
   });
   return demoRequest().then(res => {
     t.deepEqual(res.body, JSON.stringify({ foo: "bar" }));
-    //requests will to lower the key in header
-    t.deepEqual(res.headers["x-api-key"], 'imagine this is a key sent to the server. It should be returned in the response header');
   });
+});
+
+test.serial('Request headers are returned in response headers', (t) => {
+
+  const expectedReq = {
+    method: 'POST',
+    url: '/somepath',
+    headers: {
+      'X-API-Key': 'foobar',
+      Accept: 'application/json'
+    },
+    body: demoData
+  };
+
+  const networkMockPromise = sut(expectedReq, {
+    status: 200, body: { foo: "bar" }, headers: {"mock-return-header": "thisandthat"}
+  });
+  
+  return demoRequest()
+    .then((res) => {
+           //requests will to lower the key in header
+           t.deepEqual(res.headers["mock-return-header"], 'thisandthat');
+   })
+    .catch(t.fail);
 });
 
 test.serial('Handling multiple requests in the case of a retry', (t) => {
