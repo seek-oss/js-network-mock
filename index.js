@@ -10,12 +10,13 @@ const requestMatches = require('./request-matches');
 const sendResponse = (responseHandler, responseToSend) => {
   responseHandler.statusCode = responseToSend.status;
 
+  //add supplied headers to the response if any are passed in
   if(responseToSend.headers){
     Object.keys(responseToSend.headers).forEach(function(k) {
-      res.setHeader(k, responseToSend.headers[k]);
+      responseHandler.setHeader(k, responseToSend.headers[k]);
     });
   }
-
+  
   if(responseToSend.body && typeof responseToSend.body !== "string"){
     responseHandler.end(JSON.stringify(responseToSend.body));
   }
